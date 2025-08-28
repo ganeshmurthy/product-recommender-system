@@ -26,7 +26,7 @@ def get_recommendations(user_id: str):
 
 # Input model for new user recommendations
 class NewUserRecommendationRequest(BaseModel):
-    num_recommendations: int = 10
+    num_recommendations: int = 100
 
 
 # POST for new users (authenticated)
