@@ -567,7 +567,7 @@ user_features = store.get_online_features(features=user_feature_view, entity_row
 ```python
 # Embedding-based recommendations for new users
 user_embed = user_encoder(**data_preproccess(user_as_df))[0]
-top_k = store.retrieve_online_documents(query=user_embed.tolist(), top_k=k)
+top_k = store.retrieve_online_documents(query=user_embed.tolist(), top_k=k, distance_metric="cosine")
 ```
 
 **What happens in real-time:**
@@ -602,7 +602,8 @@ interaction_df = dataset_provider.interaction_df()
 similar_items = store.retrieve_online_documents(
     query=user_embedding,
     top_k=10,
-    features=["item_embedding:item_id"]
+    features=["item_embedding:item_id"],
+    distance_metric="cosine"
 )
 ```
 

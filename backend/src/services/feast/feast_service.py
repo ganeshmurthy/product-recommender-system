@@ -55,6 +55,7 @@ class FeastService:
             self.search_by_image_service = SearchByImageService(self.store, self.clip_encoder)
             logger.info("[Feast] SearchByImageService initialized.")
 
+    # -------------------- Private methods --------------------
     def _load_model_version(self):
         """
         Retrieve the most recently updated model version from the database.
@@ -98,6 +99,44 @@ class FeastService:
 
         return user_encoder
 
+    def _load_random_items(self, k: int = 10):
+        """
+        This function is called when a user has no prefereces.
+        It'll return a list of random k items from the dataset.
+        """
+        items_df = self.dataset_provider.item_df()
+        item_ids = items_df["item_id"].sample(k).tolist()
+        return self._item_ids_to_product_list(item_ids)
+
+    def _item_ids_to_product_list(self, top_item_ids: pd.Series | List) -> List[Product]:
+        """
+        Given a list of item_ids, fetch and return full product details from the feature store.
+        """
+        suggested_item = self.store.get_online_features(
+            features=self.store.get_feature_service("item_service"),
+            entity_rows=[{"item_id": item_id} for item_id in top_item_ids],
+        ).to_df()
+        logger.info(suggested_item.columns)
+        logger.info(suggested_item)
+        suggested_item = [
+            Product(
+                item_id=row.item_id,
+                product_name=row.product_name,
+                category=row.category,
+                about_product=getattr(row, "about_product", None),
+                img_link=getattr(row, "img_link", None),
+                discount_percentage=getattr(row, "discount_percentage", None),
+                discounted_price=getattr(row, "discounted_price", None),
+                actual_price=row.actual_price,
+                product_link=getattr(row, "product_link", None),
+                rating_count=getattr(row, "rating_count", None),
+                rating=getattr(row, "rating", None),
+            )
+            for row in suggested_item.itertuples()
+        ]
+        return suggested_item
+
+    # -------------------- Public methods --------------------
     def get_all_existing_users(self) -> List[dict]:
         """
         Return all existing user feature rows from the dataset provider.
@@ -121,16 +160,7 @@ class FeastService:
         top_item_ids = suggested_item_ids.to_df().iloc[0]["top_k_item_ids"]
         return self._item_ids_to_product_list(top_item_ids)
 
-    def _load_random_items(self, k: int = 10):
-        """
-        This function is called when a user has no prefereces.
-        It'll return a list of random k items from the dataset.
-        """
-        items_df = self.dataset_provider.item_df()
-        item_ids = items_df["item_id"].sample(k).tolist()
-        return self._item_ids_to_product_list(item_ids)
-
-    def load_items_new_user(self, user: User, k: int = 10):
+    def load_items_new_user(self, user: User, k: int = 100):
         """
         Generate recommendations for a new user by encoding their features
         and querying the feature store for top-k similar items.
@@ -145,39 +175,11 @@ class FeastService:
         self.user_encoder.eval()
         user_embed = self.user_encoder(**data_preproccess(user_as_df))[0]
         top_k = self.store.retrieve_online_documents(
-            query=user_embed.tolist(), top_k=k, features=["item_embedding:item_id"]
+            query=user_embed.tolist(), top_k=k, features=["item_embedding:item_id"], distance_metric="cosine"
         )
         logger.info("Retrieved documents from store:", top_k.to_df())
         top_item_ids = top_k.to_df()["item_id"].tolist()
         return self._item_ids_to_product_list(top_item_ids)
-
-    def _item_ids_to_product_list(self, top_item_ids: pd.Series | List) -> List[Product]:
-        """
-        Given a list of item_ids, fetch and return full product details from the feature store.
-        """
-        suggested_item = self.store.get_online_features(
-            features=self.store.get_feature_service("item_service"),
-            entity_rows=[{"item_id": item_id} for item_id in top_item_ids],
-        ).to_df()
-        logger.info(suggested_item.columns)
-        logger.info(tb.tabulate(suggested_item, headers="keys", tablefmt="grid"))
-        suggested_item = [
-            Product(
-                item_id=row.item_id,
-                product_name=row.product_name,
-                category=row.category,
-                about_product=getattr(row, "about_product", None),
-                img_link=getattr(row, "img_link", None),
-                discount_percentage=getattr(row, "discount_percentage", None),
-                discounted_price=getattr(row, "discounted_price", None),
-                actual_price=row.actual_price,
-                product_link=getattr(row, "product_link", None),
-                rating_count=getattr(row, "rating_count", None),
-                rating=getattr(row, "rating", None),
-            )
-            for row in suggested_item.itertuples()
-        ]
-        return suggested_item
 
     def search_item_by_text(self, text: str, k=5):
         """
@@ -224,6 +226,7 @@ class FeastService:
         try:
             results_df = self.search_by_image_service.search_by_image(image, k)
             logger.info("[Feast] search_by_image() completed")
+            logger.info(results_df)
 
             if results_df.empty or "item_id" not in results_df:
                 raise ValueError("No valid item_id results returned from image search.")

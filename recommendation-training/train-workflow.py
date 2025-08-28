@@ -164,7 +164,7 @@ def generate_candidates(
     for user_embed in user_embed_df["embedding"]:
         item_recommendation.append(
             store.retrieve_online_documents(
-                query=user_embed, top_k=k, features=[f"{item_embedding_view}:item_id"]
+                query=user_embed, top_k=k, features=[f"{item_embedding_view}:item_id"], distance_metric="cosine"
             )
             .to_df()["item_id"]
             .to_list()
